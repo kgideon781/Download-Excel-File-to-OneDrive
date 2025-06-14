@@ -1,33 +1,52 @@
-name: Download Excel File to OneDrive
+name: Download Excel File to GitHub
 
 on:
   schedule:
-    # Runs every day at 8 AM UTC (adjust as needed)
+    # Runs every day at 8 AM UTC
     - cron: '0 8 * * *'
-  workflow_dispatch: # Allows manual trigger
+  workflow_dispatch: # Manual trigger
 
 jobs:
-  download-and-upload:
+  download-file:
     runs-on: ubuntu-latest
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        token: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Install dependencies
+    - name: Download Excel File
       run: |
-        pip install requests msal
+        # Create data directory if it doesn't exist
+        mkdir -p data
+        
+        # Download the file with timestamp
+        TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+        FILENAME="Active_fellows_PhD_status_${TIMESTAMP}.xlsx"
+        
+        # Try to download the file
+        curl -L -o "data/${FILENAME}" "${{ secrets.SOURCE_URL }}" || {
+          echo "Direct download failed, trying with user agent"
+          curl -L -H "User-Agent: Mozilla/5.0" -o "data/${FILENAME}" "${{ secrets.SOURCE_URL }}"
+        }
+        
+        # Also create a latest copy (overwrites previous)
+        cp "data/${FILENAME}" "data/Active_fellows_PhD_status_latest.xlsx"
+        
+        # Check if file was downloaded successfully
+        if [ -f "data/${FILENAME}" ] && [ -s "data/${FILENAME}" ]; then
+          echo "File downloaded successfully: ${FILENAME}"
+          ls -la data/
+        else
+          echo "Download failed or file is empty"
+          exit 1
+        fi
     
-    - name: Download and Upload File
-      env:
-        TENANT_ID: ${{ secrets.TENANT_ID }}
-        CLIENT_ID: ${{ secrets.CLIENT_ID }}
-        CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-        SOURCE_URL: ${{ secrets.SOURCE_URL }}
+    - name: Commit and Push Changes
       run: |
-        python download_upload.py
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add data/
+        git commit -m "Update Excel file - $(date)" || exit 0
+        git push
