@@ -1,4 +1,4 @@
-name: Download Excel File to GitHub
+name: Download Excel File (Working Version)
 
 on:
   schedule:
@@ -9,12 +9,14 @@ on:
 jobs:
   download-file:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+        persist-credentials: true
     
     - name: Download Excel File
       run: |
@@ -25,21 +27,30 @@ jobs:
         TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
         FILENAME="Active_fellows_PhD_status_${TIMESTAMP}.xlsx"
         
-        # Try to download the file
-        curl -L -o "data/${FILENAME}" "${{ secrets.SOURCE_URL }}" || {
-          echo "Direct download failed, trying with user agent"
-          curl -L -H "User-Agent: Mozilla/5.0" -o "data/${FILENAME}" "${{ secrets.SOURCE_URL }}"
-        }
+        echo "Downloading from SharePoint..."
+        curl -L \
+          -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+          -o "data/${FILENAME}" \
+          "${{ secrets.SOURCE_URL }}"
         
-        # Also create a latest copy (overwrites previous)
-        cp "data/${FILENAME}" "data/Active_fellows_PhD_status_latest.xlsx"
-        
-        # Check if file was downloaded successfully
+        # Check if download was successful
         if [ -f "data/${FILENAME}" ] && [ -s "data/${FILENAME}" ]; then
-          echo "File downloaded successfully: ${FILENAME}"
-          ls -la data/
+          FILESIZE=$(stat -c%s "data/${FILENAME}")
+          echo "✅ Download successful: ${FILENAME} (${FILESIZE} bytes)"
+          
+          # Create latest copy
+          cp "data/${FILENAME}" "data/Active_fellows_PhD_status_latest.xlsx"
+          
+          # Verify it's actually an Excel file
+          file "data/${FILENAME}"
+          
+          # Show first few bytes to confirm it's Excel format
+          echo "File signature (should start with PK for Excel):"
+          xxd -l 16 "data/${FILENAME}"
+          
         else
-          echo "Download failed or file is empty"
+          echo "❌ Download failed or file is empty"
+          ls -la data/
           exit 1
         fi
     
