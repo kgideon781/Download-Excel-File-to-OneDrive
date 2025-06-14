@@ -1,4 +1,4 @@
-name: Download Excel File (Working Version)
+name: Download Excel via Delegated Auth
 
 on:
   schedule:
@@ -18,46 +18,28 @@ jobs:
       with:
         persist-credentials: true
     
-    - name: Download Excel File
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
       run: |
-        # Create data directory if it doesn't exist
-        mkdir -p data
-        
-        # Download the file with timestamp
-        TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-        FILENAME="Active_fellows_PhD_status_${TIMESTAMP}.xlsx"
-        
-        echo "Downloading from SharePoint..."
-        curl -L \
-          -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
-          -o "data/${FILENAME}" \
-          "${{ secrets.SOURCE_URL }}"
-        
-        # Check if download was successful
-        if [ -f "data/${FILENAME}" ] && [ -s "data/${FILENAME}" ]; then
-          FILESIZE=$(stat -c%s "data/${FILENAME}")
-          echo "✅ Download successful: ${FILENAME} (${FILESIZE} bytes)"
-          
-          # Create latest copy
-          cp "data/${FILENAME}" "data/Active_fellows_PhD_status_latest.xlsx"
-          
-          # Verify it's actually an Excel file
-          file "data/${FILENAME}"
-          
-          # Show first few bytes to confirm it's Excel format
-          echo "File signature (should start with PK for Excel):"
-          xxd -l 16 "data/${FILENAME}"
-          
-        else
-          echo "❌ Download failed or file is empty"
-          ls -la data/
-          exit 1
-        fi
+        pip install requests
+    
+    - name: Download via Delegated Authentication
+      env:
+        TENANT_ID: ${{ secrets.TENANT_ID }}
+        CLIENT_ID: ${{ secrets.CLIENT_ID }}
+        CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+        REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+      run: |
+        python download_delegated.py
     
     - name: Commit and Push Changes
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add data/
-        git commit -m "Update Excel file - $(date)" || exit 0
+        git commit -m "Update Excel file via delegated auth - $(date)" || exit 0
         git push
