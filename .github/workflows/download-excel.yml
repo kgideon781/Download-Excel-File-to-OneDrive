@@ -1,0 +1,33 @@
+name: Download Excel File to OneDrive
+
+on:
+  schedule:
+    # Runs every day at 8 AM UTC (adjust as needed)
+    - cron: '0 8 * * *'
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  download-and-upload:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install requests msal
+    
+    - name: Download and Upload File
+      env:
+        TENANT_ID: ${{ secrets.TENANT_ID }}
+        CLIENT_ID: ${{ secrets.CLIENT_ID }}
+        CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+        SOURCE_URL: ${{ secrets.SOURCE_URL }}
+      run: |
+        python download_upload.py
