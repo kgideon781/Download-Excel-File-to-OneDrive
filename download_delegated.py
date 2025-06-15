@@ -62,6 +62,12 @@ FILES_TO_DOWNLOAD = [
         'filename_contains': 'Postdoctoral awards to CARTA graduates',
         'output_name': 'Postdocs',
         'description': 'Postdoctoral awards to CARTA graduates DB'
+    },
+    {
+        'search_terms': ['Fellows secured extra grants'],
+        'filename_contains': 'Fellows secured extra grants',
+        'output_name': 'Extra Grants',
+        'description': 'Fellows secured extra grants DB'
     }
 ]
 
