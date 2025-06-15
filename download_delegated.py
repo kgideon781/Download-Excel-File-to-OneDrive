@@ -1,6 +1,7 @@
 import requests
 import os
 import json
+import glob
 from datetime import datetime
 
 def get_access_token_delegated():
@@ -25,16 +26,21 @@ def get_access_token_delegated():
     
     token_data = response.json()
     
-    # Update refresh token if a new one was issued
     if 'refresh_token' in token_data:
         print("ℹ️ New refresh token issued")
     
     return token_data['access_token']
 
-# 📋 CONFIGURATION: Add your files here
+# 📋 CONFIGURATION: File management settings
+FILE_MANAGEMENT = {
+    'keep_versions': 2,  # Keep latest + 1 previous version
+    'archive_old_files': True,  # Move old files to archive folder
+    'create_changelog': True  # Track what changed
+}
+
 FILES_TO_DOWNLOAD = [
     {
-        'search_terms': ['Active fellows PhD  status'],
+        'search_terms': ['Active fellows PhD status'],
         'filename_contains': 'Active',
         'output_name': 'Active_fellows_PhD_status',
         'description': 'PhD Fellows Status Report'
@@ -50,14 +56,7 @@ FILES_TO_DOWNLOAD = [
         'filename_contains': 'institutional participant list',
         'output_name': 'Institutionalization',
         'description': 'Institutional Achievements DB'
-    },
-    # Add more files here following the same pattern
-    # {
-    #     'search_terms': ['your', 'search', 'terms'],
-    #     'filename_contains': 'part_of_filename',
-    #     'output_name': 'Output_File_Name',
-    #     'description': 'Human readable description'
-    # }
+    }
 ]
 
 def search_for_file(headers, search_config):
@@ -117,34 +116,127 @@ def download_file_by_id(file_id, headers, site_drive=False, user_drive=None):
     response.raise_for_status()
     return response.content
 
-def save_file(file_content, output_name, description):
-    """Save file with timestamp and latest versions"""
+def manage_file_versions(output_name):
+    """Manage file versions - keep only the specified number of versions"""
+    data_dir = "data"
+    archive_dir = "data/archive"
+    
+    # Create directories if they don't exist
+    os.makedirs(data_dir, exist_ok=True)
+    if FILE_MANAGEMENT['archive_old_files']:
+        os.makedirs(archive_dir, exist_ok=True)
+    
+    # Find all versions of this file
+    pattern = f"{data_dir}/{output_name}_*.xlsx"
+    existing_files = glob.glob(pattern)
+    
+    # Sort by modification time (newest first)
+    existing_files.sort(key=os.path.getmtime, reverse=True)
+    
+    keep_count = FILE_MANAGEMENT['keep_versions']
+    
+    if len(existing_files) >= keep_count:
+        files_to_remove = existing_files[keep_count:]
+        
+        for old_file in files_to_remove:
+            if FILE_MANAGEMENT['archive_old_files']:
+                # Move to archive
+                archive_path = os.path.join(archive_dir, os.path.basename(old_file))
+                os.rename(old_file, archive_path)
+                print(f"   📦 Archived: {os.path.basename(old_file)}")
+            else:
+                # Delete the file
+                os.remove(old_file)
+                print(f"   🗑️ Deleted old version: {os.path.basename(old_file)}")
+
+def check_if_file_changed(new_content, output_name):
+    """Check if the new file is different from the current latest version"""
+    latest_file = f"data/{output_name}_latest.xlsx"
+    
+    if not os.path.exists(latest_file):
+        return True  # No previous file, so it's "changed"
+    
+    with open(latest_file, 'rb') as f:
+        old_content = f.read()
+    
+    # Simple comparison - files are different if sizes differ or content differs
+    if len(new_content) != len(old_content):
+        return True
+    
+    return new_content != old_content
+
+def save_file_with_version_control(file_content, output_name, description):
+    """Save file with smart version control"""
     if not file_content or len(file_content) < 1000:
         print(f"   ❌ File too small or empty: {description}")
         return False
+    
+    # Check if file actually changed
+    if not check_if_file_changed(file_content, output_name):
+        print(f"   ℹ️ No changes detected for: {description}")
+        return True
+    
+    print(f"   🔄 Changes detected - updating: {description}")
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
     # Create data directory
     os.makedirs("data", exist_ok=True)
     
-    # Save timestamped version
+    # Clean up old versions first
+    manage_file_versions(output_name)
+    
+    # Save new timestamped version
     timestamped_filename = f"data/{output_name}_{timestamp}.xlsx"
     with open(timestamped_filename, 'wb') as f:
         f.write(file_content)
     
-    # Save latest version
+    # Update latest version
     latest_filename = f"data/{output_name}_latest.xlsx"
     with open(latest_filename, 'wb') as f:
         f.write(file_content)
     
     print(f"   ✅ Saved {len(file_content):,} bytes")
-    print(f"   📁 Timestamped: {timestamped_filename}")
-    print(f"   📁 Latest: {latest_filename}")
+    print(f"   📁 Current: {latest_filename}")
+    print(f"   📁 Backup: {timestamped_filename}")
+    
+    # Update changelog
+    if FILE_MANAGEMENT['create_changelog']:
+        update_changelog(output_name, description, timestamp)
+    
     return True
 
+def update_changelog(output_name, description, timestamp):
+    """Update the changelog with what was downloaded"""
+    changelog_file = "data/CHANGELOG.md"
+    
+    # Read existing changelog
+    changelog_content = ""
+    if os.path.exists(changelog_file):
+        with open(changelog_file, 'r', encoding='utf-8') as f:
+            changelog_content = f.read()
+    
+    # Prepare new entry
+    date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+    new_entry = f"\n## {timestamp}\n**Date:** {date_str}  \n**File:** {description} (`{output_name}_latest.xlsx`)  \n**Status:** Updated ✅\n"
+    
+    # Add to changelog
+    if "# File Download Changelog" not in changelog_content:
+        changelog_content = "# File Download Changelog\n\nThis file tracks all file downloads and updates.\n" + new_entry
+    else:
+        # Insert after the header
+        parts = changelog_content.split('\n', 3)
+        if len(parts) >= 3:
+            changelog_content = '\n'.join(parts[:3]) + new_entry + '\n'.join(parts[3:])
+        else:
+            changelog_content += new_entry
+    
+    # Write back
+    with open(changelog_file, 'w', encoding='utf-8') as f:
+        f.write(changelog_content)
+
 def download_all_files():
-    """Download all configured files"""
+    """Download all configured files with version control"""
     access_token = get_access_token_delegated()
     
     headers = {
@@ -154,8 +246,10 @@ def download_all_files():
     
     successful_downloads = 0
     failed_downloads = 0
+    unchanged_files = 0
     
-    print("🚀 Starting multi-file download...")
+    print("🚀 Starting multi-file download with version control...")
+    print(f"📋 Keeping {FILE_MANAGEMENT['keep_versions']} versions per file")
     print("=" * 60)
     
     for i, file_config in enumerate(FILES_TO_DOWNLOAD, 1):
@@ -166,7 +260,7 @@ def download_all_files():
             file_content = search_for_file(headers, file_config)
             
             if file_content:
-                if save_file(file_content, file_config['output_name'], file_config['description']):
+                if save_file_with_version_control(file_content, file_config['output_name'], file_config['description']):
                     successful_downloads += 1
                 else:
                     failed_downloads += 1
@@ -184,6 +278,13 @@ def download_all_files():
     print(f"✅ Successful: {successful_downloads}")
     print(f"❌ Failed: {failed_downloads}")
     print(f"📁 Total files processed: {len(FILES_TO_DOWNLOAD)}")
+    print(f"\n📂 File organization:")
+    print(f"   • Latest versions: data/*_latest.xlsx")
+    print(f"   • Backup versions: data/*_YYYYMMDD_HHMMSS.xlsx")
+    if FILE_MANAGEMENT['archive_old_files']:
+        print(f"   • Archived files: data/archive/")
+    if FILE_MANAGEMENT['create_changelog']:
+        print(f"   • Change history: data/CHANGELOG.md")
     
     return successful_downloads, failed_downloads
 
@@ -195,7 +296,7 @@ def main():
             print(f"\n⚠️ Some downloads failed. Check the logs above.")
             exit(1)
         else:
-            print(f"\n🎉 All files downloaded successfully!")
+            print(f"\n🎉 All files processed successfully!")
             
     except Exception as e:
         print(f"💥 Critical error: {e}")
