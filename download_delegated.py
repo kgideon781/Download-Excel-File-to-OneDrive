@@ -56,6 +56,12 @@ FILES_TO_DOWNLOAD = [
         'filename_contains': 'institutional participant list',
         'output_name': 'Institutionalization',
         'description': 'Institutional Achievements DB'
+    },
+    {
+        'search_terms': ['Postdoctoral awards to CARTA graduates'],
+        'filename_contains': 'Postdoctoral awards to CARTA graduates',
+        'output_name': 'Postdocs',
+        'description': 'Postdoctoral awards to CARTA graduates DB'
     }
 ]
 
