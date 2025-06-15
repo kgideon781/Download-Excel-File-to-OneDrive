@@ -47,7 +47,7 @@ FILES_TO_DOWNLOAD = [
     },
     {
         'search_terms': ['institutional participant list'],
-        'filename_contains': 'institutionalization',
+        'filename_contains': 'institutional participant list',
         'output_name': 'Institutionalization',
         'description': 'Institutional Achievements DB'
     },
