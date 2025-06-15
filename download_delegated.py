@@ -31,76 +31,77 @@ def get_access_token_delegated():
     
     return token_data['access_token']
 
-def download_file_with_delegated_auth():
-    """Download the file using delegated permissions"""
-    access_token = get_access_token_delegated()
+# 📋 CONFIGURATION: Add your files here
+FILES_TO_DOWNLOAD = [
+    {
+        'search_terms': ['Active fellows PhD  status'],
+        'filename_contains': 'Active',
+        'output_name': 'Active_fellows_PhD_status',
+        'description': 'PhD Fellows Status Report'
+    },
+    {
+        'search_terms': ['Cohort 1-10 Demographics'],
+        'filename_contains': 'Cohort 1-10',
+        'output_name': 'Cohort_1_10_Demographics',
+        'description': 'Cohort 1-10 Demographics'
+    },
+    {
+        'search_terms': ['institutional participant list'],
+        'filename_contains': 'institutionalization',
+        'output_name': 'Institutionalization',
+        'description': 'Institutional Achievements DB'
+    },
+    # Add more files here following the same pattern
+    # {
+    #     'search_terms': ['your', 'search', 'terms'],
+    #     'filename_contains': 'part_of_filename',
+    #     'output_name': 'Output_File_Name',
+    #     'description': 'Human readable description'
+    # }
+]
+
+def search_for_file(headers, search_config):
+    """Search for a specific file using multiple strategies"""
+    search_terms = search_config['search_terms']
+    filename_contains = search_config['filename_contains']
     
-    headers = {
-        'Authorization': f'Bearer {access_token}',
-        'Accept': 'application/json'
-    }
+    print(f"🔍 Searching for: {search_config['description']}")
     
-    # Try multiple methods to find and download the file
-    methods = [
-        ("SharePoint Site Search", lambda: search_in_site(headers)),
-        ("User Drive Search", lambda: search_in_user_drive(headers)),
-        ("Direct Site Access", lambda: access_site_directly(headers))
-    ]
-    
-    for method_name, method_func in methods:
+    # Strategy 1: Search in nnjenga's personal drive
+    for term in search_terms:
+        search_url = f"https://graph.microsoft.com/v1.0/users/nnjenga@aphrc.org/drive/root/search(q='{term}')"
+        
         try:
-            print(f"Trying {method_name}...")
-            file_content = method_func()
-            if file_content:
-                print(f"✅ Success with {method_name}!")
-                return file_content
+            response = requests.get(search_url, headers=headers)
+            if response.status_code == 200:
+                results = response.json()
+                for item in results.get('value', []):
+                    filename = item.get('name', '').lower()
+                    if (filename_contains.lower() in filename and 
+                        (filename.endswith('.xlsx') or filename.endswith('.xls'))):
+                        print(f"   ✅ Found: {item['name']}")
+                        return download_file_by_id(item['id'], headers, user_drive="nnjenga@aphrc.org")
         except Exception as e:
-            print(f"❌ {method_name} failed: {e}")
+            print(f"   ❌ Search failed for '{term}': {e}")
     
-    return None
-
-def search_in_site(headers):
-    """Search for the file in the SharePoint site"""
-    # Search in the main SharePoint site
-    search_url = "https://graph.microsoft.com/v1.0/sites/aphrcorg-my.sharepoint.com/drive/root/search(q='Active fellows PhD status')"
+    # Strategy 2: Search in SharePoint site
+    for term in search_terms:
+        search_url = f"https://graph.microsoft.com/v1.0/sites/aphrcorg-my.sharepoint.com/drive/root/search(q='{term}')"
+        
+        try:
+            response = requests.get(search_url, headers=headers)
+            if response.status_code == 200:
+                results = response.json()
+                for item in results.get('value', []):
+                    filename = item.get('name', '').lower()
+                    if (filename_contains.lower() in filename and 
+                        (filename.endswith('.xlsx') or filename.endswith('.xls'))):
+                        print(f"   ✅ Found in SharePoint: {item['name']}")
+                        return download_file_by_id(item['id'], headers, site_drive=True)
+        except Exception as e:
+            print(f"   ❌ SharePoint search failed for '{term}': {e}")
     
-    response = requests.get(search_url, headers=headers)
-    if response.status_code == 200:
-        results = response.json()
-        for item in results.get('value', []):
-            if 'Active' in item.get('name', '') and item.get('name', '').endswith('.xlsx'):
-                print(f"Found file: {item['name']}")
-                return download_file_by_id(item['id'], headers, site_drive=True)
-    
-    return None
-
-def search_in_user_drive(headers):
-    """Search in nnjenga's personal drive"""
-    search_url = "https://graph.microsoft.com/v1.0/users/nnjenga@aphrc.org/drive/root/search(q='Active fellows PhD status')"
-    
-    response = requests.get(search_url, headers=headers)
-    if response.status_code == 200:
-        results = response.json()
-        for item in results.get('value', []):
-            if 'Active' in item.get('name', '') and item.get('name', '').endswith('.xlsx'):
-                print(f"Found file: {item['name']}")
-                return download_file_by_id(item['id'], headers, user_drive="nnjenga@aphrc.org")
-    
-    return None
-
-def access_site_directly(headers):
-    """Try to access the file using known path"""
-    # Try to construct the path based on the original URL
-    file_path = "/personal/nnjenga_aphrc_org/Documents/CARTA Dashboard/ECRS/Active fellows PhD status.xlsx"
-    encoded_path = requests.utils.quote(file_path, safe='/')
-    
-    url = f"https://graph.microsoft.com/v1.0/sites/aphrcorg-my.sharepoint.com/drive/root:{encoded_path}:/content"
-    
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        print("Found file via direct path")
-        return response.content
-    
+    print(f"   ❌ File not found matching: {filename_contains}")
     return None
 
 def download_file_by_id(file_id, headers, site_drive=False, user_drive=None):
@@ -116,36 +117,88 @@ def download_file_by_id(file_id, headers, site_drive=False, user_drive=None):
     response.raise_for_status()
     return response.content
 
+def save_file(file_content, output_name, description):
+    """Save file with timestamp and latest versions"""
+    if not file_content or len(file_content) < 1000:
+        print(f"   ❌ File too small or empty: {description}")
+        return False
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Create data directory
+    os.makedirs("data", exist_ok=True)
+    
+    # Save timestamped version
+    timestamped_filename = f"data/{output_name}_{timestamp}.xlsx"
+    with open(timestamped_filename, 'wb') as f:
+        f.write(file_content)
+    
+    # Save latest version
+    latest_filename = f"data/{output_name}_latest.xlsx"
+    with open(latest_filename, 'wb') as f:
+        f.write(file_content)
+    
+    print(f"   ✅ Saved {len(file_content):,} bytes")
+    print(f"   📁 Timestamped: {timestamped_filename}")
+    print(f"   📁 Latest: {latest_filename}")
+    return True
+
+def download_all_files():
+    """Download all configured files"""
+    access_token = get_access_token_delegated()
+    
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Accept': 'application/json'
+    }
+    
+    successful_downloads = 0
+    failed_downloads = 0
+    
+    print("🚀 Starting multi-file download...")
+    print("=" * 60)
+    
+    for i, file_config in enumerate(FILES_TO_DOWNLOAD, 1):
+        print(f"\n📁 File {i}/{len(FILES_TO_DOWNLOAD)}: {file_config['description']}")
+        print("-" * 40)
+        
+        try:
+            file_content = search_for_file(headers, file_config)
+            
+            if file_content:
+                if save_file(file_content, file_config['output_name'], file_config['description']):
+                    successful_downloads += 1
+                else:
+                    failed_downloads += 1
+            else:
+                print(f"   ❌ Could not download: {file_config['description']}")
+                failed_downloads += 1
+                
+        except Exception as e:
+            print(f"   💥 Error downloading {file_config['description']}: {e}")
+            failed_downloads += 1
+    
+    print("\n" + "=" * 60)
+    print("📊 DOWNLOAD SUMMARY")
+    print("=" * 60)
+    print(f"✅ Successful: {successful_downloads}")
+    print(f"❌ Failed: {failed_downloads}")
+    print(f"📁 Total files processed: {len(FILES_TO_DOWNLOAD)}")
+    
+    return successful_downloads, failed_downloads
+
 def main():
     try:
-        print("🚀 Starting delegated authentication download...")
+        successful, failed = download_all_files()
         
-        file_content = download_file_with_delegated_auth()
-        
-        if file_content and len(file_content) > 1000:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"data/Active_fellows_PhD_status_{timestamp}.xlsx"
-            
-            os.makedirs("data", exist_ok=True)
-            
-            # Save timestamped version
-            with open(filename, 'wb') as f:
-                f.write(file_content)
-            
-            # Save latest version
-            with open("data/Active_fellows_PhD_status_latest.xlsx", 'wb') as f:
-                f.write(file_content)
-            
-            print(f"✅ Success! Downloaded {len(file_content):,} bytes")
-            print(f"📁 Saved as: {filename}")
-            print(f"📁 Latest: data/Active_fellows_PhD_status_latest.xlsx")
-            
-        else:
-            print("❌ Download failed or file too small")
+        if failed > 0:
+            print(f"\n⚠️ Some downloads failed. Check the logs above.")
             exit(1)
+        else:
+            print(f"\n🎉 All files downloaded successfully!")
             
     except Exception as e:
-        print(f"💥 Error: {e}")
+        print(f"💥 Critical error: {e}")
         exit(1)
 
 if __name__ == "__main__":
