@@ -53,7 +53,7 @@ FILES_TO_DOWNLOAD = [
     },
     {
         'search_terms': ['Participant list for institutional staff trained'],
-        'filename_contains': 'Participant list for institutional staff trained',
+        'filename_contains': 'Participant list for institutional staff',
         'output_name': 'Institutionalization',
         'description': 'Institutional Achievements DB'
     },
