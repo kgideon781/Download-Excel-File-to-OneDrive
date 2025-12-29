@@ -5,11 +5,11 @@ import glob
 from datetime import datetime
 
 def get_access_token_delegated():
-    """Get access token using refresh token (delegated permissions)"""
-    tenant_id = os.environ['TENANT_ID']
-    client_id = os.environ['CLIENT_ID']
-    client_secret = os.environ['CLIENT_SECRET']
-    refresh_token = os.environ['REFRESH_TOKEN']
+    """Get access token using refresh token (delegated permissions) with improved error handling"""
+    tenant_id = os.environ['TENANT_ID'].strip()
+    client_id = os.environ['CLIENT_ID'].strip()
+    client_secret = os.environ['CLIENT_SECRET'].strip()
+    refresh_token = os.environ['REFRESH_TOKEN'].strip()
     
     url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
     
@@ -21,15 +21,49 @@ def get_access_token_delegated():
         'scope': 'https://graph.microsoft.com/Files.Read.All offline_access'
     }
     
-    response = requests.post(url, data=data)
-    response.raise_for_status()
+    print("[*] Requesting access token...")
+    print(f"[*] Token endpoint: {url}")
+    print(f"[*] Client ID: {client_id[:8]}...{client_id[-4:]}")
+    print(f"[*] Refresh token length: {len(refresh_token)} chars")
     
-    token_data = response.json()
-    
-    if 'refresh_token' in token_data:
-        print("ℹ️ New refresh token issued")
-    
-    return token_data['access_token']
+    try:
+        response = requests.post(url, data=data, timeout=30)
+        
+        if response.status_code != 200:
+            print(f"[X] Authentication failed: {response.status_code}")
+            try:
+                error_data = response.json()
+                print(f"[X] Error: {error_data.get('error', 'Unknown')}")
+                print(f"[X] Description: {error_data.get('error_description', 'No description')}")
+            except:
+                print(f"[X] Response: {response.text}")
+            
+            response.raise_for_status()
+        
+        token_data = response.json()
+        
+        if 'refresh_token' in token_data:
+            new_refresh = token_data['refresh_token']
+            print("[!] New refresh token issued!")
+            print(f"[!] UPDATE GitHub Secret REFRESH_TOKEN with:\n{new_refresh}\n")
+            
+            # Save to file for convenience
+            with open('NEW_REFRESH_TOKEN.txt', 'w', encoding='utf-8') as f:
+                f.write(f"New refresh token issued: {datetime.now()}\n\n")
+                f.write(f"{new_refresh}\n\n")
+                f.write("ACTION REQUIRED:\n")
+                f.write("Update GitHub Secret 'REFRESH_TOKEN' with the value above\n")
+            print("[*] New token also saved to: NEW_REFRESH_TOKEN.txt")
+        
+        print("[+] Access token obtained successfully")
+        return token_data['access_token']
+        
+    except requests.exceptions.HTTPError as e:
+        print(f"\n[X] HTTP Error: {e}")
+        raise
+    except Exception as e:
+        print(f"\n[X] Unexpected error: {e}")
+        raise
 
 # 📋 CONFIGURATION: File management settings
 FILE_MANAGEMENT = {
@@ -52,8 +86,8 @@ FILES_TO_DOWNLOAD = [
         'description': 'Cohort 1-10 Demographics'
     },
     {
-        'search_terms': ['Participant list for institutional staff trained'],
-        'filename_contains': 'Participant list for institutional staff',
+        'search_terms': ['institutional participant list'],
+        'filename_contains': 'institutional participant list',
         'output_name': 'Institutionalization',
         'description': 'Institutional Achievements DB'
     },
@@ -76,7 +110,7 @@ def search_for_file(headers, search_config):
     search_terms = search_config['search_terms']
     filename_contains = search_config['filename_contains']
     
-    print(f"🔍 Searching for: {search_config['description']}")
+    print(f"[*] Searching for: {search_config['description']}")
     
     # Strategy 1: Search in nnjenga's personal drive
     for term in search_terms:
@@ -90,10 +124,10 @@ def search_for_file(headers, search_config):
                     filename = item.get('name', '').lower()
                     if (filename_contains.lower() in filename and 
                         (filename.endswith('.xlsx') or filename.endswith('.xls'))):
-                        print(f"   ✅ Found: {item['name']}")
+                        print(f"    [+] Found: {item['name']}")
                         return download_file_by_id(item['id'], headers, user_drive="nnjenga@aphrc.org")
         except Exception as e:
-            print(f"   ❌ Search failed for '{term}': {e}")
+            print(f"    [X] Search failed for '{term}': {e}")
     
     # Strategy 2: Search in SharePoint site
     for term in search_terms:
@@ -107,12 +141,12 @@ def search_for_file(headers, search_config):
                     filename = item.get('name', '').lower()
                     if (filename_contains.lower() in filename and 
                         (filename.endswith('.xlsx') or filename.endswith('.xls'))):
-                        print(f"   ✅ Found in SharePoint: {item['name']}")
+                        print(f"    [+] Found in SharePoint: {item['name']}")
                         return download_file_by_id(item['id'], headers, site_drive=True)
         except Exception as e:
-            print(f"   ❌ SharePoint search failed for '{term}': {e}")
+            print(f"    [X] SharePoint search failed for '{term}': {e}")
     
-    print(f"   ❌ File not found matching: {filename_contains}")
+    print(f"    [X] File not found matching: {filename_contains}")
     return None
 
 def download_file_by_id(file_id, headers, site_drive=False, user_drive=None):
@@ -155,11 +189,11 @@ def manage_file_versions(output_name):
                 # Move to archive
                 archive_path = os.path.join(archive_dir, os.path.basename(old_file))
                 os.rename(old_file, archive_path)
-                print(f"   📦 Archived: {os.path.basename(old_file)}")
+                print(f"    [*] Archived: {os.path.basename(old_file)}")
             else:
                 # Delete the file
                 os.remove(old_file)
-                print(f"   🗑️ Deleted old version: {os.path.basename(old_file)}")
+                print(f"    [*] Deleted old version: {os.path.basename(old_file)}")
 
 def check_if_file_changed(new_content, output_name):
     """Check if the new file is different from the current latest version"""
@@ -180,15 +214,15 @@ def check_if_file_changed(new_content, output_name):
 def save_file_with_version_control(file_content, output_name, description):
     """Save file with smart version control"""
     if not file_content or len(file_content) < 1000:
-        print(f"   ❌ File too small or empty: {description}")
+        print(f"    [X] File too small or empty: {description}")
         return False
     
     # Check if file actually changed
     if not check_if_file_changed(file_content, output_name):
-        print(f"   ℹ️ No changes detected for: {description}")
+        print(f"    [*] No changes detected for: {description}")
         return True
     
-    print(f"   🔄 Changes detected - updating: {description}")
+    print(f"    [+] Changes detected - updating: {description}")
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
@@ -208,9 +242,9 @@ def save_file_with_version_control(file_content, output_name, description):
     with open(latest_filename, 'wb') as f:
         f.write(file_content)
     
-    print(f"   ✅ Saved {len(file_content):,} bytes")
-    print(f"   📁 Current: {latest_filename}")
-    print(f"   📁 Backup: {timestamped_filename}")
+    print(f"    [+] Saved {len(file_content):,} bytes")
+    print(f"    [*] Current: {latest_filename}")
+    print(f"    [*] Backup: {timestamped_filename}")
     
     # Update changelog
     if FILE_MANAGEMENT['create_changelog']:
@@ -230,7 +264,7 @@ def update_changelog(output_name, description, timestamp):
     
     # Prepare new entry
     date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-    new_entry = f"\n## {timestamp}\n**Date:** {date_str}  \n**File:** {description} (`{output_name}_latest.xlsx`)  \n**Status:** Updated ✅\n"
+    new_entry = f"\n## {timestamp}\n**Date:** {date_str}  \n**File:** {description} (`{output_name}_latest.xlsx`)  \n**Status:** Updated\n"
     
     # Add to changelog
     if "# File Download Changelog" not in changelog_content:
@@ -249,6 +283,10 @@ def update_changelog(output_name, description, timestamp):
 
 def download_all_files():
     """Download all configured files with version control"""
+    print("\n" + "=" * 70)
+    print("CARTA DASHBOARD - FILE DOWNLOAD")
+    print("=" * 70)
+    
     access_token = get_access_token_delegated()
     
     headers = {
@@ -260,12 +298,12 @@ def download_all_files():
     failed_downloads = 0
     unchanged_files = 0
     
-    print("🚀 Starting multi-file download with version control...")
-    print(f"📋 Keeping {FILE_MANAGEMENT['keep_versions']} versions per file")
-    print("=" * 60)
+    print(f"\n[*] Starting multi-file download with version control...")
+    print(f"[*] Keeping {FILE_MANAGEMENT['keep_versions']} versions per file")
+    print("=" * 70)
     
     for i, file_config in enumerate(FILES_TO_DOWNLOAD, 1):
-        print(f"\n📁 File {i}/{len(FILES_TO_DOWNLOAD)}: {file_config['description']}")
+        print(f"\n[{i}/{len(FILES_TO_DOWNLOAD)}] {file_config['description']}")
         print("-" * 40)
         
         try:
@@ -277,26 +315,26 @@ def download_all_files():
                 else:
                     failed_downloads += 1
             else:
-                print(f"   ❌ Could not download: {file_config['description']}")
+                print(f"    [X] Could not download: {file_config['description']}")
                 failed_downloads += 1
                 
         except Exception as e:
-            print(f"   💥 Error downloading {file_config['description']}: {e}")
+            print(f"    [X] Error downloading {file_config['description']}: {e}")
             failed_downloads += 1
     
-    print("\n" + "=" * 60)
-    print("📊 DOWNLOAD SUMMARY")
-    print("=" * 60)
-    print(f"✅ Successful: {successful_downloads}")
-    print(f"❌ Failed: {failed_downloads}")
-    print(f"📁 Total files processed: {len(FILES_TO_DOWNLOAD)}")
-    print(f"\n📂 File organization:")
-    print(f"   • Latest versions: data/*_latest.xlsx")
-    print(f"   • Backup versions: data/*_YYYYMMDD_HHMMSS.xlsx")
+    print("\n" + "=" * 70)
+    print("DOWNLOAD SUMMARY")
+    print("=" * 70)
+    print(f"[+] Successful: {successful_downloads}")
+    print(f"[X] Failed: {failed_downloads}")
+    print(f"[*] Total files processed: {len(FILES_TO_DOWNLOAD)}")
+    print(f"\n[*] File organization:")
+    print(f"    - Latest versions: data/*_latest.xlsx")
+    print(f"    - Backup versions: data/*_YYYYMMDD_HHMMSS.xlsx")
     if FILE_MANAGEMENT['archive_old_files']:
-        print(f"   • Archived files: data/archive/")
+        print(f"    - Archived files: data/archive/")
     if FILE_MANAGEMENT['create_changelog']:
-        print(f"   • Change history: data/CHANGELOG.md")
+        print(f"    - Change history: data/CHANGELOG.md")
     
     return successful_downloads, failed_downloads
 
@@ -305,13 +343,15 @@ def main():
         successful, failed = download_all_files()
         
         if failed > 0:
-            print(f"\n⚠️ Some downloads failed. Check the logs above.")
+            print(f"\n[!] Some downloads failed. Check the logs above.")
             exit(1)
         else:
-            print(f"\n🎉 All files processed successfully!")
+            print(f"\n[+] All files processed successfully!")
             
     except Exception as e:
-        print(f"💥 Critical error: {e}")
+        print(f"\n[X] Critical error: {e}")
+        import traceback
+        traceback.print_exc()
         exit(1)
 
 if __name__ == "__main__":
