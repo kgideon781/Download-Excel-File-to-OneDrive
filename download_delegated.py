@@ -86,8 +86,8 @@ FILES_TO_DOWNLOAD = [
         'description': 'Cohort 1-10 Demographics'
     },
     {
-        'search_terms': ['institutional participant list'],
-        'filename_contains': 'institutional participant list',
+        'search_terms': ['participant list for institutional staff trained'],
+        'filename_contains': 'participant list for institutional staff trained',
         'output_name': 'Institutionalization',
         'description': 'Institutional Achievements DB'
     },
