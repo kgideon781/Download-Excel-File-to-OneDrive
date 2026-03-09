@@ -81,8 +81,8 @@ FILES_TO_DOWNLOAD = [
     },
     {
         'search_terms': ['Cohort 1-11 Demographics'],
-        'filename_contains': 'Cohort 1-10',
-        'output_name': 'Cohort_1_10_Demographics',
+        'filename_contains': 'Cohort 1-11',
+        'output_name': 'Cohort_1_11_Demographics',
         'description': 'Cohort 1-11 Demographics'
     },
     {
