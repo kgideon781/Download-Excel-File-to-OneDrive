@@ -80,10 +80,10 @@ FILES_TO_DOWNLOAD = [
         'description': 'PhD Fellows Status Report'
     },
     {
-        'search_terms': ['Cohort 1-11 Demographics'],
-        'filename_contains': 'Cohort 1-11',
+        'search_terms': ['CARTA Fellows Demographics'],
+        'filename_contains': 'Demographics',
         'output_name': 'Cohort_1_11_Demographics',
-        'description': 'Cohort 1-11 Demographics'
+        'description': 'CARTA Fellows Demographics'
     },
     {
         'search_terms': ['participant list for institutional staff trained'],
