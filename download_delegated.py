@@ -82,7 +82,7 @@ FILES_TO_DOWNLOAD = [
     {
         'search_terms': ['CARTA Fellows Demographics'],
         'filename_contains': 'Demographics',
-        'output_name': 'Cohort_1_11_Demographics',
+        'output_name': 'Cohort_1_10_Demographics',
         'description': 'CARTA Fellows Demographics'
     },
     {
