@@ -11,22 +11,22 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         persist-credentials: true
-    
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-    
+
     - name: Install dependencies
       run: |
-        pip install requests
-    
+        pip install requests openpyxl
+
     - name: Download via Delegated Authentication
       env:
         TENANT_ID: ${{ secrets.TENANT_ID }}
@@ -35,7 +35,11 @@ jobs:
         REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
       run: |
         python download_delegated.py
-    
+
+    - name: Build stats_latest.json for Our Impact dashboard
+      run: |
+        python build_stats.py
+
     - name: Commit and Push Changes
       run: |
         git config --local user.email "action@github.com"
