@@ -166,6 +166,11 @@ def load_fellows() -> list[dict]:
         unique_id = r.get("Unique ID")
         if not unique_id:
             continue
+        # Skip the appended summary/lookup table at the bottom of the Fellows sheet:
+        # those rows have a Unique ID (e.g. "Cohort", 1, 2, ..., "Terminated", "Deceased")
+        # but no actual fellow name. A real fellow always has a first name or surname.
+        if not (r.get("First Name") or r.get("Surname")):
+            continue
         out.append({
             "id": str(unique_id),
             "gender": normalize_gender(r.get("Gender")),
