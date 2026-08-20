@@ -25,7 +25,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        pip install requests openpyxl
+        pip install requests openpyxl pynacl
 
     - name: Download via Delegated Authentication
       env:
@@ -33,6 +33,10 @@ jobs:
         CLIENT_ID: ${{ secrets.CLIENT_ID }}
         CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
         REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+        # Token with 'Secrets: write' on this repo, used to persist the
+        # rotated REFRESH_TOKEN. The built-in GITHUB_TOKEN cannot write
+        # secrets, so without this the refresh token expires after 90 days.
+        GH_PAT: ${{ secrets.GH_PAT }}
       run: |
         python download_delegated.py
 

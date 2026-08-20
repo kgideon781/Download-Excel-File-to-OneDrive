@@ -1,0 +1,7 @@
+# Never commit credentials that the token-refresh flow may leave behind
+NEW_REFRESH_TOKEN.txt
+*refresh_token*.txt
+.env
+
+__pycache__/
+*.pyc

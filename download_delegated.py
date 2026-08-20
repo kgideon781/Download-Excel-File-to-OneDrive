@@ -4,6 +4,65 @@ import json
 import glob
 from datetime import datetime
 
+import github_secrets
+
+REFRESH_TOKEN_SECRET = 'REFRESH_TOKEN'
+
+
+def persist_refresh_token(new_refresh):
+    """Write a newly issued refresh token back into the REFRESH_TOKEN secret.
+
+    Entra ID rotates the refresh token on every refresh and each individual
+    token expires 90 days after it was issued (AADSTS700082), so the new one
+    MUST replace the stored secret or the workflow will break ~90 days after
+    the current token was minted. The token value is never printed.
+    """
+    print("[*] New refresh token issued — rotating stored secret...")
+
+    if not github_secrets.rotation_is_configured():
+        print("[!] " + "=" * 66)
+        print("[!] ACTION REQUIRED: automatic rotation is NOT configured.")
+        print("[!] This refresh token expires 90 days after it was issued and")
+        print("[!] the stored secret still holds the old one.")
+        print("[!] Configure GH_PAT (a token with 'Secrets: write') so the")
+        print(f"[!] {REFRESH_TOKEN_SECRET} secret is updated automatically.")
+        print("[!] See docs/TOKEN_RUNBOOK.md")
+        print("[!] " + "=" * 66)
+        return False
+
+    if github_secrets.update_secret(REFRESH_TOKEN_SECRET, new_refresh):
+        print("[+] Refresh token rotated — next run will use the new token.")
+        return True
+
+    print("[!] " + "=" * 66)
+    print("[!] ACTION REQUIRED: rotation FAILED. The stored secret still holds")
+    print("[!] the previous refresh token, which will expire 90 days after it")
+    print("[!] was issued. Fix GH_PAT or rotate manually.")
+    print("[!] See docs/TOKEN_RUNBOOK.md")
+    print("[!] " + "=" * 66)
+    return False
+
+
+def explain_auth_failure(error_data):
+    """Print actionable guidance for the failure modes we have actually hit."""
+    error = error_data.get('error', '')
+    description = error_data.get('error_description', '')
+
+    if error != 'invalid_grant':
+        return
+
+    if 'AADSTS700082' in description or 'expired due to inactivity' in description:
+        print("[X] " + "=" * 66)
+        print("[X] The stored refresh token has EXPIRED and cannot be renewed.")
+        print("[X] A new one must be obtained through an interactive Microsoft")
+        print("[X] sign-in — this cannot be automated away after the fact.")
+        print("[X] Follow docs/TOKEN_RUNBOOK.md to mint and store a new token.")
+        print("[X] " + "=" * 66)
+    elif 'AADSTS50173' in description:
+        print("[X] The account password changed, invalidating the refresh token.")
+        print("[X] Re-consent is required — see docs/TOKEN_RUNBOOK.md")
+
+
 def get_access_token_delegated():
     """Get access token using refresh token (delegated permissions) with improved error handling"""
     tenant_id = os.environ['TENANT_ID'].strip()
@@ -35,6 +94,7 @@ def get_access_token_delegated():
                 error_data = response.json()
                 print(f"[X] Error: {error_data.get('error', 'Unknown')}")
                 print(f"[X] Description: {error_data.get('error_description', 'No description')}")
+                explain_auth_failure(error_data)
             except:
                 print(f"[X] Response: {response.text}")
 
@@ -43,16 +103,7 @@ def get_access_token_delegated():
         token_data = response.json()
 
         if 'refresh_token' in token_data:
-            new_refresh = token_data['refresh_token']
-            print("[!] New refresh token issued!")
-            print(f"[!] UPDATE GitHub Secret REFRESH_TOKEN with:\n{new_refresh}\n")
-
-            with open('NEW_REFRESH_TOKEN.txt', 'w', encoding='utf-8') as f:
-                f.write(f"New refresh token issued: {datetime.now()}\n\n")
-                f.write(f"{new_refresh}\n\n")
-                f.write("ACTION REQUIRED:\n")
-                f.write("Update GitHub Secret 'REFRESH_TOKEN' with the value above\n")
-            print("[*] New token also saved to: NEW_REFRESH_TOKEN.txt")
+            persist_refresh_token(token_data['refresh_token'])
 
         print("[+] Access token obtained successfully")
         return token_data['access_token']
