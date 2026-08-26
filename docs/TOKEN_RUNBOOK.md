@@ -45,6 +45,34 @@ If `GH_PAT` is absent the workflow still runs, but it prints a loud
 Once a refresh token has expired it **cannot** be renewed programmatically. A new
 one has to come from an interactive sign-in as the account that owns the files.
 
+There are **two** credentials that expire independently, and the refresh token
+cannot be minted while the client secret is dead. Always check the client secret
+first — otherwise step 3 below fails with `AADSTS7000222` after the
+authorization code has already been burned.
+
+### 0. Check the client secret first
+
+A client secret lasts at most 24 months. If it has expired, every token request
+fails with:
+
+```
+AADSTS7000222: The provided client secret keys for app '<client-id>' are expired.
+```
+
+Recreate it before touching the refresh token:
+
+1. Azure portal → **Microsoft Entra ID** → **App registrations** → this app.
+2. **Certificates & secrets** → **Client secrets** → **New client secret**.
+3. Add a description and an expiry, then **Add**.
+4. Copy the **Value** immediately — it is shown only once. (The *Secret ID* is
+   not the secret; the *Value* is.)
+5. Update the `CLIENT_SECRET` repository secret with it.
+6. Put a calendar reminder on the expiry date. Nothing rotates this
+   automatically, and it will silently break the workflow when it lapses.
+
+A new client secret alone does **not** restore access: the refresh token still
+has to be re-minted below.
+
 ### 1. Build the authorization URL
 
 Replace `<TENANT_ID>` and `<CLIENT_ID>` with the values behind the existing
@@ -54,7 +82,7 @@ secrets, then open the URL in a browser and sign in as the file-owning account:
 https://login.microsoftonline.com/<TENANT_ID>/oauth2/v2.0/authorize
   ?client_id=<CLIENT_ID>
   &response_type=code
-  &redirect_uri=http://localhost
+  &redirect_uri=http://localhost:8080
   &response_mode=query
   &scope=https://graph.microsoft.com/Files.Read.All%20offline_access
   &prompt=consent
@@ -65,7 +93,7 @@ only get a one-hour access token. Put the URL on a single line (no whitespace).
 
 ### 2. Grab the authorization code
 
-After consenting, the browser is redirected to a `http://localhost/?code=...`
+After consenting, the browser is redirected to a `http://localhost:8080/?code=...`
 URL that will not load. That is expected — copy the `code` parameter out of the
 address bar. It is single-use and valid for only a few minutes.
 
@@ -76,7 +104,7 @@ curl -X POST "https://login.microsoftonline.com/<TENANT_ID>/oauth2/v2.0/token" \
   -d "client_id=<CLIENT_ID>" \
   -d "client_secret=<CLIENT_SECRET>" \
   -d "code=<CODE_FROM_STEP_2>" \
-  -d "redirect_uri=http://localhost" \
+  -d "redirect_uri=http://localhost:8080" \
   -d "grant_type=authorization_code" \
   -d "scope=https://graph.microsoft.com/Files.Read.All offline_access"
 ```
@@ -94,12 +122,16 @@ Take the `refresh_token` field from the JSON response.
 ## Handling the token safely
 
 The refresh token grants read access to the account's files. Treat it like a
-password:
+password — and note that **this repository is public**, so its Actions logs,
+commits and files are all world-readable:
 
 - **Never paste it into a log, an issue, a PR, or a commit.** Earlier revisions
   of `download_delegated.py` printed the full token into the Actions log on every
-  successful run; any token from before this change should be considered exposed
-  and replaced.
+  successful run. Because the repository is public, those logs were readable by
+  anyone; every token from before this change must be considered compromised.
+- **Do not put credentials in shared documents.** Renewal guides circulated as
+  Word/PDF files have carried the live `client_secret` inline. Reference the
+  secret by name and keep the value only in Azure and GitHub Secrets.
 - `.gitignore` blocks `NEW_REFRESH_TOKEN.txt` and similar files from being
   committed.
 - Redo the re-consent flow above to invalidate a token you believe has leaked.
@@ -110,5 +142,7 @@ password:
 | --- | --- | --- |
 | `AADSTS700082` | Refresh token expired | Re-consent (above) |
 | `AADSTS50173` | Account password changed | Re-consent (above) |
-| `AADSTS7000215` | Invalid client secret | Rotate `CLIENT_SECRET` in Entra ID |
+| `AADSTS7000222` | Client secret **expired** | Recreate it — step 0 above |
+| `AADSTS7000215` | Client secret wrong/invalid | Check `CLIENT_SECRET` — step 0 above |
+| `AADSTS50011` | Redirect URI mismatch | Must match the app registration exactly (`http://localhost:8080`) |
 | `AADSTS65001` | Consent not granted | Re-run authorize URL with `prompt=consent` |

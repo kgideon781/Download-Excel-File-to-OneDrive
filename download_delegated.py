@@ -48,6 +48,20 @@ def explain_auth_failure(error_data):
     error = error_data.get('error', '')
     description = error_data.get('error_description', '')
 
+    if error == 'invalid_client':
+        if 'AADSTS7000222' in description or 'AADSTS7000215' in description:
+            print("[X] " + "=" * 66)
+            print("[X] The CLIENT_SECRET has EXPIRED or is invalid.")
+            print("[X] Client secrets last at most 24 months and must be")
+            print("[X] recreated in the Azure portal (App registrations ->")
+            print("[X] Certificates & secrets -> New client secret), then stored")
+            print("[X] in the CLIENT_SECRET repository secret.")
+            print("[X] NOTE: a new client secret does NOT restore access on its")
+            print("[X] own - the refresh token must be re-minted afterwards.")
+            print("[X] Follow docs/TOKEN_RUNBOOK.md")
+            print("[X] " + "=" * 66)
+        return
+
     if error != 'invalid_grant':
         return
 
