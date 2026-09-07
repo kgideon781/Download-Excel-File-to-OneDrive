@@ -101,6 +101,19 @@ FILES_TO_DOWNLOAD = [
         'filename_contains': 'Fellows secured extra grants',
         'output_name': 'Extra Grants',
         'description': 'Fellows secured extra grants DB'
+    },
+    {
+        # Source of the promotions / appointments / awards figures on the Our
+        # Impact page. Several search terms because the file name carries commas
+        # that search handles inconsistently.
+        'search_terms': [
+            'Fellows promotions, Recognitions and awards',
+            'Fellows promotions',
+            'Recognitions and awards',
+        ],
+        'filename_contains': 'promotions',
+        'output_name': 'Recognitions',
+        'description': 'Fellow promotions, recognitions and awards DB'
     }
 ]
 

@@ -39,7 +39,13 @@ def read_sheet(xlsx_path: Path, sheet_name: str) -> list[dict]:
         raise KeyError(f"{xlsx_path.name}: sheet '{sheet_name}' missing. Have: {wb.sheetnames}")
     ws = wb[sheet_name]
     rows = ws.iter_rows(values_only=True)
-    header = [str(h).strip() if h is not None else "" for h in next(rows)]
+    # Blank header cells get a positional name so their data survives: the
+    # "Local and Institutional ToTs" sheet holds the training topic in column 9
+    # with an empty header cell, and dropping it loses the whole topic breakdown.
+    header = []
+    for idx, h in enumerate(next(rows), start=1):
+        name = str(h).strip() if h is not None else ""
+        header.append(name or f"__col{idx}")
     out = []
     for row in rows:
         if all(v is None for v in row):
@@ -124,6 +130,22 @@ def normalize_intervention(v: str | None) -> str | None:
     return str(v).strip()
 
 
+# Intervention tag -> the label the published dashboard shows.
+TOPIC_LABELS = {
+    "APAS": "Institutional support",
+    "SW": "Supervisory skills",
+    "GGWW": "Grant Writing",
+    "JAS": "PhD training",
+    "PhD training": "PhD training",
+}
+
+
+def topic_label(intervention: str | None) -> str | None:
+    if not intervention:
+        return None
+    return TOPIC_LABELS.get(intervention, intervention)
+
+
 def normalize_training_type(v: str | None) -> str | None:
     """Map type-of-training labels to canonical values."""
     if not v:
@@ -182,14 +204,19 @@ def load_fellows() -> list[dict]:
             "year_completion": to_year(r.get("Date of completion(Defended/Graduated)")),
             "status": normalize_status(r.get("Current PhD Status ( Completed/Defended/In Progress)")),
             "ttc_months": to_float(r.get("Time to completion since PhD registration (Months)")),
+            # The published report's "Average of time to completion" card measures
+            # from enrolment into CARTA, not from PhD registration.
+            "ttc_months_carta": to_float(r.get("Time to completion since enrolling CARTA (Months)")),
             "promotion": (r.get("Promotion event") or "").strip() or None,
             "responsibilities": (str(r.get("Other responsibilities") or "").strip() or None),
+            "pubs_at_enrollment": to_int(r.get("No of Publications at Enrollment")),
             "pubs_during_phd": to_int(r.get("No of Publications During PhD")),
             "pubs_after_phd": to_int(r.get("No of Publications after PhD")),
             "first_author_phd_pubs": to_int(r.get("1st Author PhD  Publications")),
             "last_author_phd_pubs": to_int(r.get("Last Author PhD Publications")),
             "first_author_grad_pubs": to_int(r.get("1st Author Graduate  Publications")),
             "last_author_grad_pubs": to_int(r.get("Last Author  Graduate Publications")),
+            "pubs_for_graduation": to_int(r.get("No of Publications for Graduation")),
             "terminated_date": to_year(r.get("Terminated")),
             "funder": (str(r.get("Fellow Funder") or "").strip() or None),
             "jas_attended": sum(
@@ -248,11 +275,16 @@ def load_trainings():
         rows = read_sheet(src, sheet_name)
         out = []
         for r in rows:
-            if not r.get("Full Name") and not r.get("Intervention"):
+            if not r.get("Full Name") and not r.get("Intervention") and not r.get("__col9"):
                 continue
+            raw_topic = r.get("Intervention")
+            if raw_topic in (None, ""):
+                raw_topic = r.get("__col9")   # blank-header topic column
+            intervention = normalize_intervention(raw_topic)
             out.append({
                 "source": source_tag,  # "carta" | "institutional"
-                "intervention": normalize_intervention(r.get("Intervention")),
+                "intervention": intervention,
+                "topic": topic_label(intervention),
                 "type": normalize_training_type(r.get("Type of training")),
                 "duty": normalize_duty(r.get("Principal duty at event (Participant/Facilitator)")),
                 "sex": normalize_gender(r.get("Sex")),
@@ -263,6 +295,51 @@ def load_trainings():
         return out
 
     return _load("CARTA Organized", "carta") + _load("Local and Institutional ToTs", "institutional")
+
+
+# Values that mean "nothing recorded" in the recognitions workbook.
+_BLANK_FLAGS = {"", "none", "no", "n/a", "na", "0", "-", "nil"}
+
+
+def _recorded(v) -> bool:
+    return str(v or "").strip().lower() not in _BLANK_FLAGS
+
+
+def load_recognitions() -> list[dict]:
+    """Promotions, internal/external appointments and awards, one row per event.
+
+    Source: "Fellows promotions, Recognitions and awards.xlsx", sheet
+    "Recognitions". Rows without a Unique ID are CARTA directors rather than
+    fellows and are dropped.
+
+    The published cards count *distinct fellows*, not events ("Fellows have
+    taken up ..."), so the page de-duplicates on `id`. Emitting rows rather
+    than totals keeps the cards filterable by cohort, institution and gender.
+    """
+    src = DATA_DIR / "Recognitions_latest.xlsx"
+    if not src.exists():
+        print(f"  Recognitions: {src.name} not present, skipping")
+        return []
+    rows = read_sheet(src, "Recognitions")
+    out = []
+    for r in rows:
+        uid = str(r.get("Unique ID") or "").strip()
+        if not uid:
+            continue
+        out.append({
+            "id": uid,
+            "gender": normalize_gender(r.get("Gender")),
+            "cohort": to_int(r.get("Cohort")),
+            "institution_employment": (r.get("Home institution at registration") or "").strip() or None,
+            "year": to_year(r.get("Year of Award")),
+            "promotion": _recorded(r.get("Promotion")),
+            "internal_appointment": _recorded(r.get("Extra responsibilities (Internal appointments)")),
+            # NB: the source header really is "Recognition (Award" with an
+            # unbalanced bracket. Match it exactly.
+            "award": _recorded(r.get("Recognition (Award")),
+            "external_appointment": _recorded(r.get("Impact on field (External appointment)")),
+        })
+    return out
 
 
 def load_curricula_institutions(trainings: list[dict]) -> list[str]:
@@ -345,9 +422,20 @@ def main():
     trainings = load_trainings()
     print(f"  Training records: {len(trainings)}")
     institutions = load_curricula_institutions(trainings)
+    recognitions = load_recognitions()
+    print(f"  Recognition records: {len(recognitions)}")
     print(f"  Curricula institutions: {len(institutions)}")
 
     measures = quick_measures(fellows, postdocs, grants, trainings)
+    if recognitions:
+        def _fellows_with(flag):
+            return len({r["id"] for r in recognitions if r[flag]})
+        measures["recognition_counts"] = {
+            "responsibilities_in_institution": _fellows_with("internal_appointment"),
+            "promoted_since_joining": _fellows_with("promotion"),
+            "responsibilities_outside": _fellows_with("external_appointment"),
+            "awards_and_recognition": _fellows_with("award"),
+        }
     print(f"  Quick measures: total_fellows={measures['total_fellows']}, "
           f"completed={measures['completed']}, grants=${measures['extra_grants_usd']:,}")
 
@@ -358,6 +446,7 @@ def main():
             "postdocs": "Postdocs_latest.xlsx",
             "grants": "Extra Grants_latest.xlsx",
             "institutionalization": "Institutionalization_latest.xlsx",
+            "recognitions": "Recognitions_latest.xlsx",
         },
         "rows": {
             "fellows": fellows,
@@ -365,6 +454,7 @@ def main():
             "grants": grants,
             "trainings": trainings,
             "curricula_institutions": [{"name": n} for n in institutions],
+            "recognitions": recognitions,
         },
         "measures_static": {},
         "meta": {"summary": measures},
