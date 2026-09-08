@@ -20,6 +20,8 @@ import sys
 import warnings
 from pathlib import Path
 
+from collections import Counter
+
 import openpyxl
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -104,17 +106,39 @@ def normalize_status(v: str | None) -> str | None:
         return "In progress"
     if "terminat" in s:
         return "Terminated"
+    UNMAPPED["status"][s] += 1
     return str(v).strip()
+
+
+# Values that were not recognised during this build, reported at the end so a
+# vocabulary change in a source workbook cannot pass unnoticed. The demographics
+# file switched from Female/Male to Woman/Man in 2026 and the old rule, which
+# only looked for a leading "f", silently mapped every woman to None: the
+# published page showed 0 female fellows while still looking healthy.
+UNMAPPED: dict[str, "Counter[str]"] = {
+    "gender": Counter(),
+    "status": Counter(),
+}
+
+_FEMALE = {"f", "female", "woman", "women", "girl"}
+_MALE = {"m", "male", "man", "men", "boy"}
 
 
 def normalize_gender(v: str | None) -> str | None:
     if not v:
         return None
     s = str(v).strip().lower()
-    if s.startswith("f"):
+    if s in _FEMALE:
         return "Female"
-    if s.startswith("m"):
+    if s in _MALE:
         return "Male"
+    # Prefix fallback for decorated values such as "Female (F)". Test the female
+    # spellings first, because "woman" ends in "man".
+    if s.startswith(("female", "woman", "women")):
+        return "Female"
+    if s.startswith(("male", "man", "men")):
+        return "Male"
+    UNMAPPED["gender"][s] += 1
     return None
 
 
@@ -483,6 +507,12 @@ def main():
         "measures_static": {},
         "meta": {"summary": measures},
     }
+
+    for field, counts in UNMAPPED.items():
+        if counts:
+            print(f"  WARNING: unrecognised {field} values (treated as unknown):")
+            for value, n in counts.most_common():
+                print(f"    {n:>6}x {value!r}")
 
     OUT_FILE.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
     size_kb = OUT_FILE.stat().st_size / 1024
