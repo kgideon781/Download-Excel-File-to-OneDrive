@@ -316,6 +316,12 @@ def load_grants() -> list[dict]:
     return out
 
 
+# Distinct people who appear in the training sheets, counted during the build.
+# Names are available here but are deliberately not published in the JSON, so
+# only the count travels. Populated by load_trainings().
+TRAINED_INDIVIDUALS: set[str] = set()
+
+
 def load_trainings():
     src = DATA_DIR / "Institutionalization_latest.xlsx"
 
@@ -325,6 +331,9 @@ def load_trainings():
         for r in rows:
             if not r.get("Full Name") and not r.get("Intervention") and not r.get("__col9"):
                 continue
+            name = " ".join(str(r.get("Full Name") or "").split()).strip().lower()
+            if name:
+                TRAINED_INDIVIDUALS.add(name)
             raw_topic = r.get("Intervention")
             if raw_topic in (None, ""):
                 raw_topic = r.get("__col9")   # blank-header topic column
@@ -422,6 +431,7 @@ def quick_measures(fellows, postdocs, grants, trainings) -> dict:
         median_ttc = round(s[len(s) // 2] if len(s) % 2 else (s[len(s)//2 - 1] + s[len(s)//2]) / 2, 1)
     total_grants = round(sum(g["amount_usd"] for g in grants))
     pubs = sum((f["pubs_during_phd"] or 0) + (f["pubs_after_phd"] or 0) for f in fellows)
+    trained_participations = sum(1 for t in trainings if t["duty"] == "Participant")
     completed_fellows = by_status.get("Completed", 0)
     retention_rate = round(((total_fellows - by_status.get("Terminated", 0)) / total_fellows) * 100, 1) if total_fellows else None
 
@@ -449,6 +459,9 @@ def quick_measures(fellows, postdocs, grants, trainings) -> dict:
         "extra_grants_usd": total_grants,
         "extra_grants_count": len(grants),
         "peer_reviewed_articles": pubs,
+        # Distinct people trained, versus the number of training attendances.
+        "trained_individuals": len(TRAINED_INDIVIDUALS),
+        "trained_participations": trained_participations,
         "jas_person_events": jas_person_events,
         "training_counts": dict(training_counts),
     }
