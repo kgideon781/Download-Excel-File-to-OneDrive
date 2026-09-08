@@ -179,9 +179,33 @@ def normalize_duty(v: str | None) -> str:
 # ---------------------------------------------------------------------------
 
 
+# Demographics workbooks in preference order. Only the first is refreshed by
+# download_delegated.py; "Cohort_1_11_..." is an orphan whose newest snapshot is
+# 30 Apr 2026, and reading it silently froze the graduate count at 195 while the
+# maintained file had already moved to 197. Both carry the same population
+# (287 fellows, cohorts 1-12), so the names are historical labels, not scope.
+DEMOGRAPHICS_CANDIDATES = (
+    "Cohort_1_10_Demographics_latest.xlsx",
+    "Cohort_1_11_Demographics_latest.xlsx",
+)
+
+
+def demographics_file() -> Path:
+    """First demographics workbook that exists, by preference."""
+    for name in DEMOGRAPHICS_CANDIDATES:
+        candidate = DATA_DIR / name
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(
+        "no demographics workbook found, looked for: "
+        + ", ".join(DEMOGRAPHICS_CANDIDATES)
+    )
+
+
 def load_fellows() -> list[dict]:
-    """Use the cohort 1-11 demographics file (most complete)."""
-    src = DATA_DIR / "Cohort_1_11_Demographics_latest.xlsx"
+    """Fellow-level demographics, from whichever workbook the pipeline maintains."""
+    src = demographics_file()
+    print(f"  Fellows source: {src.name}")
     rows = read_sheet(src, "Fellows")
     out = []
     for r in rows:
@@ -442,7 +466,7 @@ def main():
     payload = {
         "generated_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "source_files": {
-            "fellows": "Cohort_1_11_Demographics_latest.xlsx",
+            "fellows": demographics_file().name,
             "postdocs": "Postdocs_latest.xlsx",
             "grants": "Extra Grants_latest.xlsx",
             "institutionalization": "Institutionalization_latest.xlsx",
