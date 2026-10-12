@@ -1,6 +1,10 @@
 # File Download Changelog
 
 This file tracks all file downloads and updates.
+## 20261012_172452
+**Date:** 2026-10-12 17:24:52 UTC  
+**File:** Fellow promotions, recognitions and awards DB (`Recognitions_latest.xlsx`)  
+**Status:** Updated
 ## 20261008_151407
 **Date:** 2026-10-08 15:14:07 UTC  
 **File:** Postdoctoral awards to CARTA graduates DB (`Postdocs_latest.xlsx`)  
