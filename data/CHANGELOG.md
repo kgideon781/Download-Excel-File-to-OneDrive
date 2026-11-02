@@ -1,6 +1,14 @@
 # File Download Changelog
 
 This file tracks all file downloads and updates.
+## 20261102_081656
+**Date:** 2026-11-02 08:16:56 UTC  
+**File:** CARTA Fellows Demographics (`Cohort_1_10_Demographics_latest.xlsx`)  
+**Status:** Updated
+## 20261102_081653
+**Date:** 2026-11-02 08:16:53 UTC  
+**File:** PhD Fellows Status Report (`Active_fellows_PhD_status_latest.xlsx`)  
+**Status:** Updated
 ## 20261028_145208
 **Date:** 2026-10-28 14:52:08 UTC  
 **File:** Fellows secured extra grants DB (`Extra Grants_latest.xlsx`)  
