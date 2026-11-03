@@ -1,6 +1,14 @@
 # File Download Changelog
 
 This file tracks all file downloads and updates.
+## 20261103_155051
+**Date:** 2026-11-03 15:50:51 UTC  
+**File:** Fellow promotions, recognitions and awards DB (`Recognitions_latest.xlsx`)  
+**Status:** Updated
+## 20261103_155042
+**Date:** 2026-11-03 15:50:42 UTC  
+**File:** CARTA Fellows Demographics (`Cohort_1_10_Demographics_latest.xlsx`)  
+**Status:** Updated
 ## 20261102_175044
 **Date:** 2026-11-02 17:50:44 UTC  
 **File:** CARTA Fellows Demographics (`Cohort_1_10_Demographics_latest.xlsx`)  
